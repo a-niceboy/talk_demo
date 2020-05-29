@@ -16,31 +16,33 @@
 #include <iostream>
 #include <map>
 
+#include "wrap.h"
 #include "user.h"
 using namespace std;
 
 class TalkServer
 {
-#define	HOST		12345
+#define	POST		12345
 #define	DATA_SIZE	87380
 public:
 	TalkServer();
 	~TalkServer();
 
-	void run_server();
+	void init();
+	void run();
 
 private:
 	void run_accept();
 	void run_epoll();
 
-	void data_center(const string& readbuf);
+	void data_center(const int& counter_fd, const string& readbuf);
 
+	bool m_init;
 	bool m_stop;
 	std::thread m_thrd;
 
 	int m_server_sockfd;
 	int m_epoll_sockfd;
-	int m_listen_sockfd;
 
 	map<int, User> m_users;
 	

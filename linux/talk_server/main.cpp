@@ -4,6 +4,6 @@ int main()
 {
 	TalkServer talk_srv;
 
-	talk_srv.run_server();
+	talk_srv.run();
 	return 0;
 }
