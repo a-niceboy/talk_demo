@@ -1,10 +1,10 @@
-OBJ = user.o main.o
+OBJ = common.o main.o
 
 all : $(OBJ)
 	g++ -std=c++11 -o demo $(OBJ) -pthread
 
-user.o : user.h user.cpp
-	g++ -std=c++11 -c -o user.o user.cpp
+common.o : common.h common.cpp
+	g++ -std=c++11 -c -o common.o common.cpp
 
 main.o : main.cpp
 	g++ -std=c++11 -c -o main.o main.cpp

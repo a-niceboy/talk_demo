@@ -38,7 +38,7 @@ private:
 
 	void menu();
 	void create_room();
-	void join_room(const int& room_id = 0);
+	void join_room(const bool& is_private = false);
 
 	void into_room_ani();
 

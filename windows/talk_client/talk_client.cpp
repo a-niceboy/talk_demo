@@ -76,7 +76,7 @@ void TalkClient::init()
 {
 	init_ani_data();
 	init_window();
-	//init_socket();
+	init_socket();
 }
 
 void TalkClient::init_ani_data()
@@ -199,9 +199,10 @@ void TalkClient::run()
 	if (!m_stop)
 	{
 		begin_ani();
-
+		menu();
 		input_nick_name();
 
+		into_room_ani();
 		talking();
 	}
 }
@@ -235,7 +236,7 @@ void TalkClient::begin_ani()
 		Sleep(5);
 	}
 
-	Sleep(5000);
+	Sleep(2000);
 }
 
 void TalkClient::input_nick_name()
@@ -303,7 +304,7 @@ void TalkClient::menu()
 		cout << endl;
 		cout << "0: go to normal room" << endl;
 		cout << "1: create your room" << endl;
-		cout << "2: join room" << endl;
+		cout << "2: join other room" << endl;
 		cout << endl;
 
 		int flag = 0;
@@ -321,13 +322,13 @@ void TalkClient::menu()
 		}
 		else if (flag == 2)
 		{
-			cin >> m_room_id;
-			join_room(m_room_id);
+			join_room(true);
 			break;
 		}
 		else
 		{
-
+			cout << "you input error" << endl;
+			Sleep(1000);
 		}
 	}
 
@@ -335,7 +336,71 @@ void TalkClient::menu()
 
 void TalkClient::create_room()
 {
-		string out_data = CREATE_ROOM_SIGN;
+	string out_data = CREATE_ROOM_SIGN;
+	int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
+	if (SOCKET_ERROR == ret)
+	{
+		cerr << "send error" << endl;
+		closesocket(m_server_sockfd);
+		return;
+	}
+
+	char buf[DATA_SIZE];
+	memset(buf, 0, sizeof(buf));
+	ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
+	if (SOCKET_ERROR == ret)
+	{
+		cerr << "recv error" << endl;
+		closesocket(m_server_sockfd);
+		return;
+	}
+	string readbuf(buf, buf + strlen(buf));
+	size_t pos = readbuf.find(ROOM_ID_SIGN);
+	string icon = ROOM_ID_SIGN;
+	if (pos == string::npos)
+	{
+		cerr << "room_id no find" << endl;
+	}
+	else
+	{
+		m_room_id = atoi(readbuf.substr(pos + icon.size(), readbuf.size() - pos - icon.size()).c_str());
+		if (m_room_id == 0)
+		{
+			cerr << "room_id 0" << endl;
+		}
+		else
+		{
+			cout << "create room success " << endl;
+		}
+	}
+	Sleep(2000);
+}
+
+void TalkClient::join_room(const bool& is_private)
+{
+	int room_id = 0;
+	while (true)
+	{		
+		system("cls");
+		if (is_private)
+		{
+			cout << "plase input room id:" << endl;
+			while (true)
+			{
+				cin >> room_id;
+				if (room_id == 0)
+				{
+					cerr << "room id coun't 0!" << endl;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		string out_data = JOIN_ROOM_SIGN;
+		out_data += to_string(room_id);
 		int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
 		if (SOCKET_ERROR == ret)
 		{
@@ -354,41 +419,57 @@ void TalkClient::create_room()
 			return;
 		}
 		string readbuf(buf, buf + strlen(buf));
-		size_t pos = readbuf.find(ROOM_ID_SIGN);
-		string icon = ROOM_ID_SIGN;
-		if (pos == string::npos)
+		cout << readbuf << endl;
+		if (readbuf == "ok")
 		{
-			cerr << "room_id no find" << endl;
+			m_room_id = room_id;
+			break;
 		}
 		else
 		{
-			m_room_id = atoi(readbuf.substr(pos + icon.size(), readbuf.size() - pos - icon.size()).c_str());
-			if (m_room_id == 0)
-			{
-				cerr << "room_id 0" << endl;
-			}
-			else
-			{
-				cout << "create room success " << endl;
-			}
+			Sleep(1000);
 		}
-}
-
-void TalkClient::join_room()
-{
-	m_thrd = std::thread(&TalkClient::recv_data, this);
-	draw_windows();
-	send_data();
+	}
+	Sleep(2000);
 }
 
 void TalkClient::into_room_ani()
 {
+	size_t max_len;
+	max_len = into_room_ani_data[0].size();
+	for (size_t i = 1; i != into_room_ani_data.size(); i++)
+	{
+		if (into_room_ani_data[i].size() > max_len)
+		{
+			max_len = into_room_ani_data[i].size();
+		}
+	}
+	max_len += into_room_ani_data.size();
+	for (size_t i = 0; i != max_len; i++)
+	{
+		system("cls");
+		for (size_t j = 0; j != into_room_ani_data.size(); j++)
+		{
+			size_t temp = i;
+			//倾斜绘制
+			temp = (int)(temp - j) < 0 ? 0 : (temp - j);
+			if (temp > into_room_ani_data[j].size())
+			{
+				temp = into_room_ani_data[j].size();
+			}
+			cout << into_room_ani_data[j].substr(0, temp) << endl;
+		}
+		Sleep(5);
+	}
 
+	Sleep(2000);
 }
 
 void TalkClient::talking()
 {
-
+	m_thrd = std::thread(&TalkClient::recv_data, this);
+	draw_windows();
+	send_data();
 }
 
 void TalkClient::send_data_size(const string& dada)
@@ -457,7 +538,7 @@ void TalkClient::recv_data()
 inline void TalkClient::draw_windows()
 {
 	system("cls");
-	//cout << "draw_windows " << index++ << endl;
+	cout << "room id: " << m_room_id << endl;
 	draw_weight(WEIGHT);
 	draw_title(WEIGHT);
 	draw_weight(WEIGHT);

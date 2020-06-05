@@ -9,18 +9,46 @@
 
 #include <string.h>		//bzero
 #include <errno.h>
+#include <time.h>
+
 #include <map>
 #include <iostream>
 
+#include "common.h"
 using namespace std;
+
 #define	MAX_EVENTS		1024
 #define	BUFLEN			4096
 #define	SERV_POST		6565
 
-map<int, string> User;
+#define	ACCOUNT_SIGN		"account##"
+#define	ROOM_ID_SIGN		"room_id##"
+#define	CREATE_ROOM_SIGN	"create_room##"
+#define	JOIN_ROOM_SIGN		"join_room##"
+#define	TALK_DATA_SIGN		"talk_data##"
+
+map<int, Talker> talker;
+map<int, Room> room;
+
+int get_room_id() 
+{
+	int i = 0;
+	while (true)
+	{
+		map<int, Room>::iterator iter = room.find(i);
+		if (iter == room.end())
+		{
+			break;
+		}
+		else
+		{
+			i++;
+		}
+	}
+	return i;
+}
 
 /*描述就绪文件描述符相关信息*/
-
 struct myevent_s
 {
 	int fd = 0;											//要监听的文件描述符
@@ -120,10 +148,24 @@ void recvdata(void* arg)
 		{
 			cout << "==== client fd: " << ev->fd << " close" << endl;
 
-			auto iter = User.find(ev->fd);
-			if (iter != User.end())
+			map<int, Talker>::iterator iter = talker.find(ev->fd);
+			if (iter != talker.end())
 			{
-				User.erase(iter);
+				int room_id = iter->second._room_id;
+				map<int, Room>::iterator room_iter = room.find(room_id);
+				if (room_iter != room.end())
+				{
+					map<int, Talker>::iterator room_talker_iter = room_iter->second._talkers.find(ev->fd);
+					if (room_talker_iter != room_iter->second._talkers.end())
+					{
+						room_iter->second._talkers.erase(room_talker_iter);
+					}
+
+					if (room_iter->second._talkers.size() == 0);
+					room.erase(room_iter);
+				}
+
+				talker.erase(iter);
 			}
 
 			eventdel(g_efd, ev);
@@ -150,12 +192,83 @@ void recvdata(void* arg)
 	ev->buf[ev->len] = '\0';
 	eventdel(g_efd, ev);
 
-	/*
-	处理
-	*/
-	cout << "client fd: " << ev->fd << endl;
-	cout << "buf: " << ev->buf << endl;
-	User[ev->fd] = ev->buf;
+	string read_data = ev->buf;
+
+	if (read_data.find(CREATE_ROOM_SIGN) != string::npos)
+	{		
+		int room_id = get_room_id();
+
+		talker[ev->fd]._room_id = room_id;
+		talker[ev->fd]._write_data = ROOM_ID_SIGN + to_string(room_id);
+		
+		Room temp_room;
+		temp_room._talkers[ev->fd] = talker[ev->fd];
+		room[room_id] = temp_room;
+		
+	}
+	else if (read_data.find(ACCOUNT_SIGN) != string::npos)
+	{
+		size_t pos = read_data.find(ACCOUNT_SIGN);
+		string temp = ACCOUNT_SIGN;
+		string nick_name = read_data.substr(pos + temp.size(), read_data.size() - pos - temp.size());
+
+		bool is_have = false;
+		map<int, Room>::iterator room_iter =  room.find(talker[ev->fd]._room_id);
+		if (room_iter == room.end())
+		{
+			cerr << "no room id" << endl;
+		}
+		else
+		{
+			for (map<int, Talker>::iterator iter = room_iter->second._talkers.begin(); iter != room_iter->second._talkers.end(); iter++)
+			{
+				if (iter->second._nick_name == nick_name)
+				{
+					is_have = true;
+					break;
+				}
+			}
+		}
+
+		if (is_have)
+		{
+			talker[ev->fd]._write_data = "this room have name";
+		}
+		else
+		{
+			talker[ev->fd]._write_data = "ok";
+			talker[ev->fd]._nick_name = nick_name;
+		}	
+	}
+	else if (read_data.find(JOIN_ROOM_SIGN) != string::npos)
+	{
+		size_t pos = read_data.find(JOIN_ROOM_SIGN);
+		string temp = JOIN_ROOM_SIGN;
+		int room_id = atoi(read_data.substr(pos + temp.size(), read_data.size() - pos - temp.size()).c_str());
+		map<int, Room>::iterator iter = room.find(room_id);
+		if (iter == room.end())
+		{
+			talker[ev->fd]._write_data = "room no find";
+		}
+		else
+		{
+			talker[ev->fd]._room_id = room_id;
+			iter->second._talkers[ev->fd] = talker[ev->fd];
+			talker[ev->fd]._write_data = "ok";
+		}
+	}
+	else if (read_data.find(TALK_DATA_SIGN) != string::npos)
+	{
+		size_t pos = read_data.find(TALK_DATA_SIGN);
+		talker[ev->fd]._is_talking = true;
+		string temp = TALK_DATA_SIGN;
+		talker[ev->fd]._write_data = read_data.substr(pos + temp.size(), read_data.size() - pos - temp.size());
+	}
+	else
+	{
+		cout << "do error!!: " << endl;
+	}
+
 	eventset(ev, ev->fd, senddata, ev);
 	eventadd(g_efd, (EPOLLOUT | EPOLLET), ev);
 
@@ -168,57 +281,103 @@ void senddata(void* arg)
 	cout << "==== send ..." << endl;
 	struct myevent_s* ev = (struct myevent_s*)arg;
 
-	string out = "you say: \n";
-	//string body = 
-	out += User[ev->fd];
-	int flag = send(ev->fd, out.c_str(), out.size(), 0);
-	cout << "client fd: " << ev->fd << endl;
-	cout << "buf: " << out << endl;
-	if (flag > 0)
+	if (!talker[ev->fd]._is_talking)
 	{
-		eventdel(g_efd, ev);
-		//fcntl(ev->fd, F_SETFL, O_NONBLOCK);
-		eventset(ev, ev->fd, recvdata, ev);
-		eventadd(g_efd, (EPOLLIN | EPOLLET), ev);
+		string out = talker[ev->fd]._write_data;
+		int flag = send(ev->fd, out.c_str(), out.size(), 0);
 
-		cout << "====  send success  ====" << endl;
-	}
-	else
-	{
-		cout << "client fd: " << ev->fd << "send error" << endl;
-		auto iter = User.find(ev->fd);
-		if (iter != User.end())
-		{
-			User.erase(iter);
-		}
-		eventdel(g_efd, ev);
-		close(ev->fd);
-	}
-
-	for (auto iter = User.begin(); iter != User.end(); )
-	{
-		if (iter->first == ev->fd)
-		{
-			iter++;
-			continue;
-		}
-
-		string out = "other say: \n";
-		out += User[ev->fd];
-		int flag = send(iter->first, out.c_str(), out.size(), 0);
-		cout << "client fd: " << iter->first << endl;
-		cout << "buf: " << out << endl;
 		if (flag > 0)
 		{
+			eventdel(g_efd, ev);
+			eventset(ev, ev->fd, recvdata, ev);
+			eventadd(g_efd, (EPOLLIN | EPOLLET), ev);
+
 			cout << "====  send success  ====" << endl;
-			iter++;
 		}
 		else
 		{
-			iter = User.erase(iter);
 			cout << "client fd: " << ev->fd << "send error" << endl;
-			//close(ev->fd);
+			map<int, Talker>::iterator iter = talker.find(ev->fd);
+			if (iter != talker.end())
+			{
+				talker.erase(iter);
+			}
+			eventdel(g_efd, ev);
+			close(ev->fd);
 		}
+	}
+	else
+	{
+		time_t now_time = time(NULL);
+		tm now_tm;
+		localtime_r(&now_time, &now_tm);
+
+		char szTime[50] = "";
+		strftime(szTime, 50, "%Y-%m-%d %H:%M:%S", &now_tm);
+		string out = szTime;
+		out += " you say: \n";
+		out += talker[ev->fd]._write_data;
+
+		int flag = send(ev->fd, out.c_str(), out.size(), 0);
+
+		if (flag > 0)
+		{
+			eventdel(g_efd, ev);
+			eventset(ev, ev->fd, recvdata, ev);
+			eventadd(g_efd, (EPOLLIN | EPOLLET), ev);
+
+			cout << "====  send success  ====" << endl;
+		}
+		else
+		{
+			cout << "client fd: " << ev->fd << "send error" << endl;
+			map<int, Talker>::iterator iter = talker.find(ev->fd);
+			if (iter != talker.end())
+			{
+				talker.erase(iter);
+			}
+			eventdel(g_efd, ev);
+			close(ev->fd);
+		}
+
+		int room_id = talker[ev->fd]._room_id;
+
+		map<int, Room>::iterator room_iter = room.find(room_id);
+		if (room_iter == room.end())
+		{
+			cerr << "no room id" << endl;
+		}
+		else
+		{
+			for (auto iter = room_iter->second._talkers.begin(); iter != room_iter->second._talkers.end(); )
+			{
+				if (iter->first == ev->fd)
+				{
+					cout << "is only" << endl;
+					sleep(1);
+					iter++;
+					continue;
+				}
+
+				out = szTime;
+				out += " " + talker[ev->fd]._nick_name + " say: \n";
+				out += talker[ev->fd]._write_data;
+				int flag = send(iter->first, out.c_str(), out.size(), 0);
+				if (flag > 0)
+				{
+					cout << "====  send success  ====" << endl;
+					iter++;
+				}
+				else
+				{
+					cerr << "client fd: " << ev->fd << "send error" << endl;
+					iter = room_iter->second._talkers.erase(iter);					
+					eventdel(g_efd, ev);
+					close(ev->fd);
+					
+				}
+			}
+		}		
 	}
 }
 
@@ -260,6 +419,8 @@ void accept_conn(void* arg)
 			break;
 		}
 
+		Talker temp_talker;
+		talker[ev->fd] = temp_talker;
 		fcntl(client_fd, F_SETFL, O_NONBLOCK);
 
 		eventset(&g_events[i], client_fd, recvdata, &g_events[i]);
@@ -273,7 +434,7 @@ void accept_conn(void* arg)
 
 void init_listen_socket(int efd, short port)
 {
-	cout << "==== init ... " << endl;
+	cout << "====  server init ... " << endl;
 
 	int lfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -307,14 +468,17 @@ void init_listen_socket(int efd, short port)
 
 	listen(lfd, 128);
 
-	cout << "=======  init end  ======= " << endl;
+	cout << "=======  server init end  ======= " << endl;
 	cout << "\n" << endl;
 }
 
 int main(int argc, char* argv[])
 {
-	cout << "========  server  ========" << endl;
-	cout << "=====  epoll reactor  =====" << endl;
+	Room normal_room;
+	room[0] = normal_room;
+
+	cout << "========  hello  ========" << endl;
+	cout << "=====  talk server  =====" << endl;
 
 	unsigned short port = SERV_POST;
 	if (argc == 2)
@@ -349,7 +513,7 @@ int main(int argc, char* argv[])
 				continue;
 			}
 			long long duration = now_time - g_events[check_pos].last_active_time;
-			if (duration >= 10)
+			if (duration >= 6000)
 			{
 				close(g_events[check_pos].fd);
 				cout << "fd: " << g_events[check_pos].fd << " no active del" << endl;
