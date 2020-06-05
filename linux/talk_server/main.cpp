@@ -353,8 +353,6 @@ void senddata(void* arg)
 			{
 				if (iter->first == ev->fd)
 				{
-					cout << "is only" << endl;
-					sleep(1);
 					iter++;
 					continue;
 				}
