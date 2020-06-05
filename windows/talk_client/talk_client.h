@@ -28,6 +28,7 @@ public:
 	void run();
 
 private:
+	void init_language();
 	void init_window();
 	void init_socket();
 	void init_ani_data();
@@ -59,6 +60,8 @@ private:
 	const int INPUT_HEIGHT = 5; 
 	const int HEIGHT = 20;
 	const int WEIGHT = 60;
+
+	int m_language;
 
 	bool m_stop;
 	SOCKET m_server_sockfd;

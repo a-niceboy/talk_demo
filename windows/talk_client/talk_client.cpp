@@ -21,7 +21,6 @@
 ==================================================
 */
 
-
 inline void draw_weight(const int& weight_length)
 {
 	for (int i = 0; i < weight_length; i++)
@@ -31,14 +30,22 @@ inline void draw_weight(const int& weight_length)
 	cout << endl;
 }
 
-inline void draw_title(const int& weight_length)
+inline void draw_title(const int& weight_length, const int& language)
 {
 	int icon_length = (weight_length - 15) / 2;
 	for (int i = 0; i < icon_length; i++)
 	{
 		cout << "<";
 	}
-	cout << "   talk demo   ";
+	if (language)
+	{
+		cout << "   talk demo   ";
+	}
+	else
+	{
+		cout << "   聊天演示   ";
+	}
+
 	for (int i = 0; i < icon_length; i++)
 	{
 		cout << ">";
@@ -47,7 +54,8 @@ inline void draw_title(const int& weight_length)
 }
 
 TalkClient::TalkClient(const string& host, const int& post)
-	: m_stop(false)
+	: m_language(0)
+	, m_stop(false)
 	, m_server_sockfd(0)
 	, m_host(host)
 	, m_post(post)
@@ -67,16 +75,36 @@ TalkClient::~TalkClient()
 		m_thrd.join();
 	}
 	closesocket(m_server_sockfd);
-
 	WSACleanup();
 	cout << "quilt ok" << endl;
 }
 
 void TalkClient::init()
 {
+	init_language();
 	init_ani_data();
 	init_window();
 	init_socket();
+}
+
+void TalkClient::init_language()
+{
+	while (true)
+	{
+		cout << "使用中文还是英文？ 请输入：0（中文），1（英文） " << endl;
+		cout << "use chinese or english? plase input: 0(chinese), 1(english) " << endl;
+		cout << endl;
+		cin >> m_language;
+		if (m_language != 0 && m_language != 1)
+		{
+			cout << "输入错误！" << endl;
+			cout << "input error！" << endl;
+		}
+		else
+		{
+			break;
+		}
+	}
 }
 
 void TalkClient::init_ani_data()
@@ -153,12 +181,28 @@ void TalkClient::init_window()
 
 void TalkClient::init_socket()
 {
-	cout << "connect server ... " << endl;
+	if (m_language)
+	{
+		cout << "connect server ... " << endl;
+	}
+	else
+	{
+		cout << "连接服务器中 ... " << endl;
+	}
+	
 	//初始化网络环境	
 	WSADATA wsa;
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
 	{
-		cerr << "WSAStartup failed" << endl;
+		if (m_language)
+		{
+			cerr << "WSAStartup failed" << endl;
+		}
+		else
+		{
+			cerr << "初始化失败" << endl;
+		}
+		
 		m_stop = true;
 		return;
 	}
@@ -167,7 +211,15 @@ void TalkClient::init_socket()
 	m_server_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (m_server_sockfd == INVALID_SOCKET)
 	{
-		cerr << "socket failed" << endl;
+		if (m_language)
+		{
+			cerr << "socket failed" << endl;
+		}
+		else
+		{
+			cerr << "套接字初始化失败" << endl;
+		}
+
 		m_stop = true;
 		WSACleanup();
 		return;
@@ -183,19 +235,35 @@ void TalkClient::init_socket()
 
 	if (SOCKET_ERROR == ret)
 	{
-		cerr << "socket connect failed" << endl;
+		if (m_language)
+		{
+			cerr << "socket connect failed" << endl;
+		}
+		else
+		{
+			cerr << "连接服务器失败" << endl;
+		}
+		
 		m_stop = true;
 		WSACleanup();
 		closesocket(m_server_sockfd);
 		return;
 	}
 
-	cout << "connect server success " << endl;	
+	if (m_language)
+	{
+		cout << "connect server success " << endl;
+	}
+	else
+	{
+		cerr << "连接服务器成功" << endl;
+	}
+
+	Sleep(1000);
 }
 
 void TalkClient::run()
 {
-	Sleep(1000);
 	if (!m_stop)
 	{
 		begin_ani();
@@ -239,73 +307,31 @@ void TalkClient::begin_ani()
 	Sleep(2000);
 }
 
-void TalkClient::input_nick_name()
-{
-	while (true)
-	{
-		string nick_name;
-		int flag = 0;
-		while (true)
-		{
-			system("cls");
-			cout << "plase input your nick name for this talk:" << endl;
-
-			nick_name.clear();
-			cin.clear();
-			cin >> nick_name;
-
-			cout << "are your sure use " << nick_name << " ?" << endl;
-			cout << "plase input: 1(yes), 0(no)" << endl;
-
-			cin.clear();
-			cin >> flag;
-			if (flag == 1)
-			{
-				break;
-			}
-		}
-
-		string out_data = ACCOUNT_SIGN;
-		out_data += nick_name;
-		int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
-		if (SOCKET_ERROR == ret)
-		{
-			cerr << "send error" << endl;
-			closesocket(m_server_sockfd);
-			return;
-		}
-
-		char buf[DATA_SIZE];
-		memset(buf, 0, sizeof(buf));
-		ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
-		if (SOCKET_ERROR == ret)
-		{
-			cerr << "recv error" << endl;
-			closesocket(m_server_sockfd);
-			return;
-		}
-		string readbuf(buf, buf + strlen(buf));
-		cout << readbuf << endl;
-		if (readbuf == "ok")
-		{
-			break;
-		}
-	}
-
-}
-
 void TalkClient::menu()
 {
-	while (true)
+	while (!m_stop)
 	{
 		system("cls");
 
-		cout << "plase input: 0, 1, 2 ..." << endl;
-		cout << endl;
-		cout << "0: go to normal room" << endl;
-		cout << "1: create your room" << endl;
-		cout << "2: join other room" << endl;
-		cout << endl;
+		if (m_language)
+		{
+			cout << "plase input: 0, 1, 2 ..." << endl;
+			cout << endl;
+			cout << "0: go to normal room" << endl;
+			cout << "1: create your room" << endl;
+			cout << "2: join other room(need room id)" << endl;
+			cout << endl;
+		}
+		else
+		{
+			cout << "请输入：0，1，2 ..." << endl;
+			cout << endl;
+			cout << "0：前往默认大厅" << endl;
+			cout << "1：创建属于你的房间" << endl;
+			cout << "2：加入其他房间（需要房间号）" << endl;
+			cout << endl;
+		}
+
 
 		int flag = 0;
 		cin >> flag;
@@ -327,8 +353,107 @@ void TalkClient::menu()
 		}
 		else
 		{
-			cout << "you input error" << endl;
+			if (m_language)
+			{
+				cerr << "you input error" << endl;
+			}
+			else
+			{
+				cerr << "输入错误" << endl;
+			}
+			
 			Sleep(1000);
+		}
+	}
+
+}
+
+void TalkClient::input_nick_name()
+{
+	while (!m_stop)
+	{
+		string nick_name;
+		int flag = 0;
+		while (!m_stop)
+		{
+			system("cls");
+
+			if (m_language)
+			{
+				cout << "plase input your nick name for this talk:" << endl;
+			}
+			else
+			{
+				cout << "请输入您的昵称，用于此次聊天：" << endl;
+			}
+			
+			nick_name.clear();
+			cin.clear();
+			cin >> nick_name;
+
+			if (m_language)
+			{
+				cout << "are your sure use: " << nick_name << " ?" << endl;
+				cout << "plase input: 1(yes), 0(no)" << endl;
+			}
+			else
+			{
+				cout << "您确定使用： " << nick_name << " ？" << endl;
+				cout << "请输入： 1（确认），0（取消）" << endl;
+			}
+			
+			cin.clear();
+			cin >> flag;
+			if (flag == 1)
+			{
+				break;
+			}
+		}
+
+		string out_data = ACCOUNT_SIGN;
+		out_data += nick_name;
+		int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
+		if (SOCKET_ERROR == ret)
+		{
+			if (m_language)
+			{
+				cerr << "send error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "发送失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
+			return;
+		}
+
+		char buf[DATA_SIZE];
+		memset(buf, 0, sizeof(buf));
+		ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
+		if (SOCKET_ERROR == ret)
+		{
+			if (m_language)
+			{
+				cerr << "recv error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "接收失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
+			return;
+		}
+		string readbuf(buf, buf + strlen(buf));
+		cout << readbuf << endl;
+		if (readbuf == "ok")
+		{
+			break;
 		}
 	}
 
@@ -340,8 +465,18 @@ void TalkClient::create_room()
 	int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
 	if (SOCKET_ERROR == ret)
 	{
-		cerr << "send error" << endl;
-		closesocket(m_server_sockfd);
+		if (m_language)
+		{
+			cerr << "send error" << endl;
+			cerr << "server mabe close" << endl;
+		}
+		else
+		{
+			cerr << "发送失败" << endl;
+			cerr << "服务器可能关闭" << endl;
+		}
+
+		m_stop = true;
 		return;
 	}
 
@@ -350,8 +485,18 @@ void TalkClient::create_room()
 	ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
 	if (SOCKET_ERROR == ret)
 	{
-		cerr << "recv error" << endl;
-		closesocket(m_server_sockfd);
+		if (m_language)
+		{
+			cerr << "recv error" << endl;
+			cerr << "server mabe close" << endl;
+		}
+		else
+		{
+			cerr << "接收失败" << endl;
+			cerr << "服务器可能关闭" << endl;
+		}
+
+		m_stop = true;
 		return;
 	}
 	string readbuf(buf, buf + strlen(buf));
@@ -359,18 +504,25 @@ void TalkClient::create_room()
 	string icon = ROOM_ID_SIGN;
 	if (pos == string::npos)
 	{
-		cerr << "room_id no find" << endl;
+		cerr << "#### room_id no find" << endl;
 	}
 	else
 	{
 		m_room_id = atoi(readbuf.substr(pos + icon.size(), readbuf.size() - pos - icon.size()).c_str());
 		if (m_room_id == 0)
 		{
-			cerr << "room_id 0" << endl;
+			cerr << "#### room_id 0" << endl;
 		}
 		else
 		{
-			cout << "create room success " << endl;
+			if (m_language)
+			{
+				cout << "create room success " << endl;
+			}
+			else
+			{
+				cout << "创建房间成功 " << endl;
+			}		
 		}
 	}
 	Sleep(2000);
@@ -379,18 +531,34 @@ void TalkClient::create_room()
 void TalkClient::join_room(const bool& is_private)
 {
 	int room_id = 0;
-	while (true)
-	{		
-		system("cls");
+	while (!m_stop)
+	{				
 		if (is_private)
 		{
-			cout << "plase input room id:" << endl;
-			while (true)
+			system("cls");
+
+			if (m_language)
+			{
+				cout << "plase input room id:" << endl;
+			}
+			else
+			{
+				cout << "请输入房间号：" << endl;
+			}
+
+			while (!m_stop)
 			{
 				cin >> room_id;
 				if (room_id == 0)
 				{
-					cerr << "room id coun't 0!" << endl;
+					if (m_language)
+					{
+						cerr << "room id coun't 0!" << endl;
+					}
+					else
+					{
+						cout << "房间号不能为零！" << endl;
+					}					
 				}
 				else
 				{
@@ -404,8 +572,18 @@ void TalkClient::join_room(const bool& is_private)
 		int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
 		if (SOCKET_ERROR == ret)
 		{
-			cerr << "send error" << endl;
-			closesocket(m_server_sockfd);
+			if (m_language)
+			{
+				cerr << "send error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "发送失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
 			return;
 		}
 
@@ -414,8 +592,18 @@ void TalkClient::join_room(const bool& is_private)
 		ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
 		if (SOCKET_ERROR == ret)
 		{
-			cerr << "recv error" << endl;
-			closesocket(m_server_sockfd);
+			if (m_language)
+			{
+				cerr << "recv error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "接收失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
 			return;
 		}
 		string readbuf(buf, buf + strlen(buf));
@@ -495,21 +683,29 @@ void TalkClient::send_data()
 		cin.clear();
 		string out_body;
 		cin >> out_body;
-		//send_data_size(in_buf);
 
 		int size = out_body.size();
-		//cout << "size: " << size << endl;
+
 		size = htons(size);
 
 		string out_data = TALK_DATA_SIGN;
 		out_data += out_body;
-		//int ret = send(m_server_sockfd, (char*)size, sizeof(size), 0);
+
 		int ret = send(m_server_sockfd, out_data.c_str(), out_data.size(), 0);
 		if (SOCKET_ERROR == ret)
 		{
-			cerr << "send error" << endl;
-			closesocket(m_server_sockfd);
-			return;
+			if (m_language)
+			{
+				cerr << "send error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "发送失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
 		}
 	}
 }
@@ -524,23 +720,41 @@ void TalkClient::recv_data()
 		ret = recv(m_server_sockfd, buf, sizeof(buf), 0);
 		if (SOCKET_ERROR == ret)
 		{
-			cerr << "recv error" << endl;
-			closesocket(m_server_sockfd);
-			return;
+			if (m_language)
+			{
+				cerr << "recv error" << endl;
+				cerr << "server mabe close" << endl;
+			}
+			else
+			{
+				cerr << "接收失败" << endl;
+				cerr << "服务器可能关闭" << endl;
+			}
+
+			m_stop = true;
+			break;
 		}
 		string readbuf(buf, buf + strlen(buf));
 		m_read_buf.clear();
 		m_read_buf = readbuf;
-		draw_windows();//cout << readbuf << endl;
+		draw_windows();
 	}
 }
 
 inline void TalkClient::draw_windows()
 {
 	system("cls");
-	cout << "room id: " << m_room_id << endl;
+	if (m_language)
+	{
+		cout << "room id: " << m_room_id << endl;
+	}
+	else
+	{
+		cout << "房间号： " << m_room_id << endl;
+	}
+	
 	draw_weight(WEIGHT);
-	draw_title(WEIGHT);
+	draw_title(WEIGHT, m_language);
 	draw_weight(WEIGHT);
 
 	do
